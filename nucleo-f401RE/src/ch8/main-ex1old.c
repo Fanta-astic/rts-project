@@ -1,27 +1,16 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
 #include <string.h>
-#include <nucleo_hal_bsp.h>
 #include <stdlib.h>
 
 #define WELCOME_MSG "Welcome to the Nucleo management console\r\n"
 #define MAIN_MENU   "Select the option you are interested in:\r\n\t1. Toggle LD2 LED\r\n\t2. Read USER BUTTON status\r\n\t3. Clear screen and print this message "
 #define PROMPT "\r\n> "
 
-/* STATES */
-#define NOEVENT '0'
-#define IDLE '1'
-#define	PROBE '2'
-#define OUTSERIAL '3'
-#define RESTART '4'
-#define TIMEOUT	'5'
-#define BUTTONPRESS '6'
-
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
 char readBuf[1];
 __IO ITStatus UartReady = SET;
-TIM_HandleTypeDef htim1;
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -32,32 +21,14 @@ void printWelcomeMessage(void);
 uint8_t processUserInput(int8_t opt);
 int8_t readUserInput(void);
 
-
-char event = NOEVENT;
-
 int main(void) {
   uint8_t opt = 0;
 
   /* Reset of all peripherals, Initializes the Flash interface and the SysTick. */
   HAL_Init();
-  MX_GPIO_Init();
+
   /* Configure the system clock */
   SystemClock_Config();
-
-  Nucleo_BSP_Init();
-  /* Configure Timer */
-  htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 47999; //84MHz/48000 = 1750Hz
-  htim1.Init.Period = 874;      //1750HZ / 875 = 2Hz = 0.5s
-  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-
-  __TIM1_CLK_ENABLE();
-
-   HAL_NVIC_SetPriority(TIM1_UP_TIM10_IRQn, 0, 0);
-   HAL_NVIC_EnableIRQ(TIM1_UP_TIM10_IRQn);
-
-   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -67,71 +38,19 @@ int main(void) {
   HAL_NVIC_SetPriority(USART2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(USART2_IRQn);
 
-  char state = IDLE;
-  //printMessage:
+printMessage:
 
-  //printWelcomeMessage();
+  printWelcomeMessage();
 
   while (1)  {
-	switch (state){
-	case IDLE:
-		if (event !=NOEVENT){
-			state = PROBE;
-			htim1.Init.RepetitionCounter = 0; /*set it to interrupt at 0.5s*/
-			event = NOEVENT;
-			HAL_TIM_Base_Init(&htim1); /*reset timer*/
-			HAL_TIM_Base_Start_IT(&htim1); /*start timer*/
-		}
-		break;
-	case PROBE:
-		while (event != TIMEOUT){
-			/*put bluetooth scanning code here */
-			if(event == TIMEOUT){
-				state = OUTSERIAL;
-				event = NOEVENT;
-				htim1.Init.RepetitionCounter = 20; /*set it to interrupt at 10s*/
-				HAL_TIM_Base_Init(&htim1); /*reinit timer*/
-				HAL_TIM_Base_Start_IT(&htim1); /*start timer*/
-			}
-		}
-		break;
-
-	case OUTSERIAL:
-		while(event != NOEVENT){
-			if(event == TIMEOUT){
-			/*output serial code goes here */
-
-		}
-		state = RESTART;
-		event = NOEVENT;
-		htim1.Init.RepetitionCounter = 10; /*set it to interrupt at 10s*/
-		HAL_TIM_Base_Init(&htim1); /*reinit timer*/
-		HAL_TIM_Base_Start_IT(&htim1); /*start timer*/
-
-	break;
-
-	case RESTART:
-		if(event == TIMEOUT){
-			state = IDLE;
-			event = NOEVENT;
-		}
-		else if(event == BUTTONPRESS){
-			state = PROBE;
-			htim1.Init.RepetitionCounter = 0; /*set it to interrupt at 0.5s*/
-			event = NOEVENT;
-			HAL_TIM_Base_Init(&htim1); /*reset timer*/
-			HAL_TIM_Base_Start_IT(&htim1); /*start timer*/
-		}
-	break;
-    /*opt = readUserInput();
+    opt = readUserInput();
     if(opt > 0) {
       processUserInput(opt);
       if(opt == 3)
-        goto printMessage;*/
+        goto printMessage;
     }
     performCriticalTasks();
   }
-	return 0;
 }
 
 int8_t readUserInput(void) {
@@ -144,31 +63,6 @@ int8_t readUserInput(void) {
   }
   return retVal;
 }
-
-void TIM1_UP_TIM10_IRQHandler(void) {
-  HAL_TIM_IRQHandler(&htim1);
-}
-
-void EXTI15_10_IRQHandler(void) {
-  __HAL_GPIO_EXTI_CLEAR_IT(GPIO_PIN_13);
-  event = BUTTONPRESS;
-}
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-  if(htim->Instance == TIM1){
-		  if (event == NOEVENT){
-			  event = TIMEOUT;
-	  }
-	  if(TIM1->RCR == 10){
-		  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	  }
-	  else if (TIM1->RCR == 20){
-		  for (int j= 0; j<5; j++ ){
-			  HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-		  }
-	  }
-
-  }
 
 
 uint8_t processUserInput(int8_t opt) {
@@ -275,7 +169,8 @@ void MX_USART2_UART_Init(void)
         * EVENT_OUT
         * EXTI
 */
-void MX_GPIO_Init(void){
+void MX_GPIO_Init(void)
+{
 
   GPIO_InitTypeDef GPIO_InitStruct;
 
@@ -302,7 +197,6 @@ void MX_GPIO_Init(void){
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0x1, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 }
-
 
 /* USER CODE BEGIN 4 */
 
